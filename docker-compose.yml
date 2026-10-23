@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: Incluvia-postgres
+    restart: unless-stopped
+    ports:
+      - '5432:5432'
+    environment:
+      POSTGRES_USER: Incluvia
+      POSTGRES_PASSWORD: Incluvia_dev
+      POSTGRES_DB: Incluvia_dev
+    volumes:
+      - Incluvia_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U Incluvia -d Incluvia_dev']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  Incluvia_pgdata:
