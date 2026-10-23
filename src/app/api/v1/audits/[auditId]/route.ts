@@ -39,7 +39,23 @@ export async function GET(_request: Request, { params }: Params) {
       throw new AppError('FORBIDDEN', 'Acesso negado.');
     }
 
-    return NextResponse.json({ data: run });
+    // Resumo calculado sobre todos os achados da execução (independe dos filtros da UI).
+    const [byImpact, unreviewed] = await Promise.all([
+      prisma.finding.groupBy({
+        by: ['impact'],
+        where: { auditRunId: auditId },
+        _count: { _all: true },
+      }),
+      prisma.finding.count({ where: { auditRunId: auditId, reviewStatus: 'unreviewed' } }),
+    ]);
+
+    const summary = {
+      total: run._count.findings,
+      reviewed: run._count.findings - unreviewed,
+      byImpact: Object.fromEntries(byImpact.map((row) => [row.impact, row._count._all])),
+    };
+
+    return NextResponse.json({ data: { ...run, summary } });
   } catch (error) {
     return handleApiError(error);
   }

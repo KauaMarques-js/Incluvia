@@ -20,7 +20,7 @@ export async function GET(_request: Request, { params }: Params) {
       where: { id: targetId },
       include: {
         project: {
-          select: { id: true, name: true, createdById: true },
+          select: { id: true, name: true, status: true, createdById: true },
         },
         auditRuns: {
           select: {

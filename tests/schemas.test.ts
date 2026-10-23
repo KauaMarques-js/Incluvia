@@ -5,6 +5,7 @@ import {
   createTargetSchema,
   startAuditSchema,
   reviewFindingSchema,
+  paginationSchema,
 } from '../src/lib/schemas';
 
 describe('Validation Schemas (Zod)', () => {
@@ -16,7 +17,7 @@ describe('Validation Schemas (Zod)', () => {
       });
       expect(result.success).toBe(true);
       if (result.success) {
-        expect(result.data.email).toBe('auditor@Incluvia.local');
+        expect(result.data.email).toBe('auditor@incluvia.local');
       }
     });
 
@@ -108,6 +109,17 @@ describe('Validation Schemas (Zod)', () => {
         reviewStatus: 'arbitrary_status',
       });
       expect(res.success).toBe(false);
+    });
+  });
+
+  describe('paginationSchema', () => {
+    it('should apply defaults when query params are absent', () => {
+      const res = paginationSchema.parse({ page: undefined, limit: undefined });
+      expect(res).toEqual({ page: 1, limit: 20 });
+    });
+
+    it('should coerce numeric strings from the query string', () => {
+      expect(paginationSchema.parse({ page: '2', limit: '50' })).toEqual({ page: 2, limit: 50 });
     });
   });
 });

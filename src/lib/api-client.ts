@@ -1,138 +1,132 @@
 /**
  * Centralized API client for frontend interactions.
+ * Única porta de saída HTTP da interface (§13.2): trata sessão expirada e erros de validação.
  */
+import type {
+  AiEvaluationDetail,
+  AiScenario,
+  AuditDetail,
+  Finding,
+  ProjectDetail,
+  ProjectSummary,
+  RecentAuditRun,
+  TargetDetail,
+  User,
+} from '@/lib/types';
 
 export interface ApiResponse<T> {
-  data?: T;
+  data: T;
   pagination?: {
     total: number;
     page: number;
     limit: number;
     totalPages: number;
   };
-  error?: {
-    code: string;
-    message: string;
-    details?: any;
-  };
 }
 
-async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+export type FieldErrors = Record<string, string[] | undefined>;
+
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    public readonly status: number,
+    public readonly code?: string,
+    public readonly fields: FieldErrors = {}
+  ) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
+function redirectToLogin() {
+  if (typeof window === 'undefined' || window.location.pathname === '/login') return;
+  const next = encodeURIComponent(window.location.pathname + window.location.search);
+  window.location.assign(`/login?next=${next}`);
+}
+
+async function send(path: string, options: RequestInit = {}): Promise<Response> {
   const headers = new Headers(options.headers || {});
-  if (!headers.has('Content-Type') && options.body && typeof options.body === 'string') {
+  if (!headers.has('Content-Type') && typeof options.body === 'string') {
     headers.set('Content-Type', 'application/json');
   }
 
-  const res = await fetch(path, {
-    ...options,
-    headers,
-    credentials: 'same-origin',
-  });
+  const res = await fetch(path, { ...options, headers, credentials: 'same-origin' });
+  if (res.ok) return res;
 
-  const data = await res.json().catch(() => ({}));
+  const body = await res.json().catch(() => ({}));
+  if (res.status === 401 && !path.startsWith('/api/v1/auth/')) redirectToLogin();
 
-  if (!res.ok) {
-    const errorMsg = data.error?.message || `Erro HTTP ${res.status}`;
-    const error = new Error(errorMsg) as Error & { code?: string; status: number };
-    error.code = data.error?.code;
-    error.status = res.status;
-    throw error;
-  }
+  throw new ApiError(
+    body.error?.message || `Erro HTTP ${res.status}`,
+    res.status,
+    body.error?.code,
+    body.error?.details?.fields ?? {}
+  );
+}
 
-  return data;
+async function request<T>(path: string, options: RequestInit = {}): Promise<ApiResponse<T>> {
+  const res = await send(path, options);
+  return res.json();
+}
+
+function post<T>(path: string, body?: unknown) {
+  return request<T>(path, { method: 'POST', body: body === undefined ? undefined : JSON.stringify(body) });
+}
+
+function patch<T>(path: string, body: unknown) {
+  return request<T>(path, { method: 'PATCH', body: JSON.stringify(body) });
+}
+
+export interface ReviewInput {
+  reviewStatus: string;
+  reviewNote?: string;
 }
 
 export const api = {
   // Auth
-  async login(body: { email: string; password: string }) {
-    return request<ApiResponse<{ id: string; email: string; name: string; role: string }>>(
-      '/api/v1/auth/login',
-      { method: 'POST', body: JSON.stringify(body) }
-    );
-  },
-  async logout() {
-    return request<ApiResponse<{ success: boolean }>>('/api/v1/auth/logout', { method: 'POST' });
-  },
-  async me() {
-    return request<ApiResponse<{ user: { id: string; email: string; name: string; role: string } | null }>>(
-      '/api/v1/auth/me'
-    );
-  },
+  login: (body: { email: string; password: string }) => post<User>('/api/v1/auth/login', body),
+  logout: () => post<{ success: boolean }>('/api/v1/auth/logout'),
+  me: () => request<User>('/api/v1/auth/me'),
 
   // Projects
-  async getProjects() {
-    return request<ApiResponse<any[]>>('/api/v1/projects');
-  },
-  async getProject(projectId: string) {
-    return request<ApiResponse<any>>(`/api/v1/projects/${projectId}`);
-  },
-  async createProject(body: { name: string; description?: string }) {
-    return request<ApiResponse<any>>('/api/v1/projects', {
-      method: 'POST',
-      body: JSON.stringify(body),
-    });
-  },
-  async archiveProject(projectId: string) {
-    return request<ApiResponse<any>>(`/api/v1/projects/${projectId}/archive`, {
-      method: 'POST',
-    });
-  },
+  getProjects: () => request<ProjectSummary[]>('/api/v1/projects'),
+  getProject: (projectId: string) => request<ProjectDetail>(`/api/v1/projects/${projectId}`),
+  createProject: (body: { name: string; description?: string }) =>
+    post<ProjectSummary>('/api/v1/projects', body),
+  archiveProject: (projectId: string) => post<ProjectSummary>(`/api/v1/projects/${projectId}/archive`),
 
   // Targets
-  async getTargets(projectId: string) {
-    return request<ApiResponse<any[]>>(`/api/v1/projects/${projectId}/targets`);
-  },
-  async getTarget(targetId: string) {
-    return request<ApiResponse<any>>(`/api/v1/targets/${targetId}`);
-  },
-  async createTarget(projectId: string, body: { name: string; startUrl: string; description?: string; authorizationConfirmed: boolean }) {
-    return request<ApiResponse<any>>(`/api/v1/projects/${projectId}/targets`, {
-      method: 'POST',
-      body: JSON.stringify(body),
-    });
-  },
+  getTarget: (targetId: string) => request<TargetDetail>(`/api/v1/targets/${targetId}`),
+  createTarget: (
+    projectId: string,
+    body: { name: string; startUrl: string; description?: string; authorizationConfirmed: boolean }
+  ) => post<{ id: string }>(`/api/v1/projects/${projectId}/targets`, body),
 
   // Audits
-  async startAudit(targetId: string, config?: { maxPages?: number; maxDepth?: number }) {
-    return request<ApiResponse<{ id: string; status: string }>>(`/api/v1/targets/${targetId}/audits`, {
-      method: 'POST',
-      body: JSON.stringify(config || {}),
-    });
-  },
-  async getAudit(auditId: string) {
-    return request<ApiResponse<any>>(`/api/v1/audits/${auditId}`);
-  },
-  async cancelAudit(auditId: string) {
-    return request<ApiResponse<any>>(`/api/v1/audits/${auditId}/cancel`, {
-      method: 'POST',
-    });
-  },
-  async getTargetAudits(targetId: string) {
-    return request<ApiResponse<any[]>>(`/api/v1/targets/${targetId}/audits`);
-  },
-  async getFindings(auditId: string, query?: { impact?: string; reviewStatus?: string; search?: string; page?: number }) {
+  getRecentAudits: (limit = 5) => request<RecentAuditRun[]>(`/api/v1/audits?limit=${limit}`),
+  startAudit: (targetId: string, config: { maxPages: number; maxDepth: number }) =>
+    post<{ id: string; status: string }>(`/api/v1/targets/${targetId}/audits`, config),
+  getAudit: (auditId: string) => request<AuditDetail>(`/api/v1/audits/${auditId}`),
+  cancelAudit: (auditId: string) => post<{ id: string }>(`/api/v1/audits/${auditId}/cancel`),
+  getFindings(auditId: string, query: { impact?: string; reviewStatus?: string; search?: string } = {}) {
     const params = new URLSearchParams();
-    if (query?.impact) params.set('impact', query.impact);
-    if (query?.reviewStatus) params.set('reviewStatus', query.reviewStatus);
-    if (query?.search) params.set('search', query.search);
-    if (query?.page) params.set('page', String(query.page));
-
+    Object.entries(query).forEach(([key, value]) => value && params.set(key, value));
     const qs = params.toString();
-    return request<ApiResponse<any[]>>(`/api/v1/audits/${auditId}/findings${qs ? `?${qs}` : ''}`);
+    return request<Finding[]>(`/api/v1/audits/${auditId}/findings${qs ? `?${qs}` : ''}`);
   },
+  async getAuditReport(auditId: string): Promise<string> {
+    const res = await send(`/api/v1/audits/${auditId}/report`);
+    return res.text();
+  },
+  auditReportDownloadUrl: (auditId: string) => `/api/v1/audits/${auditId}/report?download=true`,
 
   // Findings
-  async reviewFinding(findingId: string, body: { reviewStatus: string; reviewNote?: string }) {
-    return request<ApiResponse<any>>(`/api/v1/findings/${findingId}/review`, {
-      method: 'PATCH',
-      body: JSON.stringify(body),
-    });
-  },
+  reviewFinding: (findingId: string, body: ReviewInput) =>
+    patch<Finding>(`/api/v1/findings/${findingId}/review`, body),
 
-  async getAiScenarios() {
-    return request<ApiResponse<any[]>>('/api/v1/ai-scenarios');
-  },
-  async createAiEvaluation(
+  // AI evaluations
+  getAiScenarios: () => request<AiScenario[]>('/api/v1/ai-scenarios'),
+  createAiEvaluation: (
     projectId: string,
     body: {
       scenarioId: string;
@@ -142,19 +136,16 @@ export const api = {
       responseText: string;
       materialAuthorized: boolean;
     }
-  ) {
-    return request<ApiResponse<any>>(`/api/v1/projects/${projectId}/ai-evaluations`, {
-      method: 'POST',
-      body: JSON.stringify(body),
-    });
-  },
-  async getAiEvaluation(evaluationId: string) {
-    return request<ApiResponse<any>>(`/api/v1/ai-evaluations/${evaluationId}`);
-  },
-  async reviewAiFinding(findingId: string, body: { reviewStatus: string; reviewNote?: string }) {
-    return request<ApiResponse<any>>(`/api/v1/ai-findings/${findingId}/review`, {
-      method: 'PATCH',
-      body: JSON.stringify(body),
-    });
-  },
+  ) => post<{ id: string }>(`/api/v1/projects/${projectId}/ai-evaluations`, body),
+  getAiEvaluation: (evaluationId: string) =>
+    request<AiEvaluationDetail>(`/api/v1/ai-evaluations/${evaluationId}`),
+  reviewAiFinding: (findingId: string, body: ReviewInput) =>
+    patch<unknown>(`/api/v1/ai-findings/${findingId}/review`, body),
+  aiReportDownloadUrl: (evaluationId: string) =>
+    `/api/v1/ai-evaluations/${evaluationId}/report?download=true`,
 };
+
+/** Mensagem amigável a partir de qualquer erro capturado. */
+export function errorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message ? error.message : fallback;
+}

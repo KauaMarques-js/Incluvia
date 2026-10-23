@@ -1,112 +1,93 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { api } from '@/lib/api-client';
+import { api, ApiError, errorMessage } from '@/lib/api-client';
+import { PageHeader } from '@/components/PageHeader';
+import { Field, firstErrors } from '@/components/Field';
 
 export default function NewProjectPage() {
   const router = useRouter();
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: FormEvent) {
     e.preventDefault();
-    setLoading(true);
+    if (name.trim().length < 2) {
+      setFieldErrors({ name: 'Informe um nome com pelo menos 2 caracteres.' });
+      return;
+    }
+    setSaving(true);
     setError(null);
-
+    setFieldErrors({});
     try {
-      const res = await api.createProject({
-        name,
-        description: description.trim() ? description : undefined,
-      });
-
-      if (res.data?.id) {
-        router.push(`/projects/${res.data.id}`);
-      } else {
-        router.push('/projects');
-      }
-    } catch (err: any) {
-      setError(err.message || 'Falha ao criar projeto.');
-    } finally {
-      setLoading(false);
+      const res = await api.createProject({ name: name.trim(), description: description.trim() || undefined });
+      router.push(`/projects/${res.data.id}`);
+    } catch (err) {
+      setError(errorMessage(err, 'Falha ao criar projeto.'));
+      if (err instanceof ApiError) setFieldErrors(firstErrors(err.fields));
+      setSaving(false);
     }
   }
 
   return (
-    <div style={{ maxWidth: '640px', margin: '2rem auto' }}>
-      <div style={{ marginBottom: '1.5rem' }}>
-        <Link href="/projects" style={{ fontSize: '0.875rem', color: 'var(--primary)', textDecoration: 'none' }}>
-          ← Voltar para Projetos
-        </Link>
-      </div>
+    <div className="narrow">
+      <PageHeader
+        title="Novo projeto"
+        breadcrumbs={[{ label: 'Projetos', href: '/projects' }, { label: 'Novo projeto' }]}
+        description="Um projeto agrupa os sites que serão auditados e as avaliações de respostas de IA de um mesmo contexto."
+      />
 
-      <div className="card">
-        <h1 style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>Criar Projeto de Auditoria</h1>
-        <p className="lead-text">
-          Defina o escopo institucional para agrupar alvos e relatórios de conformidade.
-        </p>
-
+      <form onSubmit={handleSubmit} noValidate>
         {error && (
           <div className="alert alert-error" role="alert">
             {error}
           </div>
         )}
 
-        <form onSubmit={handleSubmit} noValidate>
-          <div className="form-group">
-            <label htmlFor="name" className="form-label">
-              Nome do Projeto <span aria-hidden="true" style={{ color: '#ef4444' }}>*</span>
-            </label>
-            <p className="form-hint" id="name-hint">
-              Identificação clara do sistema, portal ou serviço que será auditado.
-            </p>
-            <input
-              id="name"
-              type="text"
-              className="form-input"
-              required
-              aria-describedby="name-hint"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="ex: Portal de Serviços ao Cidadão"
-            />
-          </div>
+        <Field
+          id="name"
+          label="Nome do projeto"
+          required
+          hint="Identifique o sistema, portal ou serviço. Ex.: Portal de Serviços ao Cidadão."
+          error={fieldErrors.name}
+        >
+          {(props) => (
+            <input {...props} type="text" className="form-input" maxLength={200} value={name} onChange={(e) => setName(e.target.value)} />
+          )}
+        </Field>
 
-          <div className="form-group">
-            <label htmlFor="description" className="form-label">
-              Descrição do Escopo (Opcional)
-            </label>
-            <p className="form-hint" id="desc-hint">
-              Objetivo da auditoria, áreas prioritárias e contexto institucional.
-            </p>
+        <Field
+          id="description"
+          label="Descrição do escopo"
+          hint="Objetivo da auditoria, áreas prioritárias e contexto institucional."
+          error={fieldErrors.description}
+        >
+          {(props) => (
             <textarea
-              id="description"
+              {...props}
               className="form-textarea"
               rows={4}
-              aria-describedby="desc-hint"
+              maxLength={2000}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="Descreva o contexto, secretarias envolvidas ou motivação da auditoria..."
             />
-          </div>
+          )}
+        </Field>
 
-          <div style={{ display: 'flex', gap: '1rem', marginTop: '1.5rem' }}>
-            <button
-              type="submit"
-              className="btn btn-primary"
-              disabled={loading || !name.trim()}
-            >
-              {loading ? 'Salvando...' : 'Criar Projeto'}
-            </button>
-            <Link href="/projects" className="btn btn-secondary">
-              Cancelar
-            </Link>
-          </div>
-        </form>
-      </div>
+        <div className="form-actions">
+          <button type="submit" className="btn btn-primary" disabled={saving}>
+            {saving ? 'Criando…' : 'Criar projeto'}
+          </button>
+          <Link href="/projects" className="btn btn-secondary">
+            Cancelar
+          </Link>
+        </div>
+      </form>
     </div>
   );
 }

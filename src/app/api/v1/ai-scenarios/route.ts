@@ -3,6 +3,8 @@ import { requireAuth } from '@/lib/session';
 import { handleApiError } from '@/lib/errors';
 import { AI_SCENARIOS } from '@/lib/ai-scenarios';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET() {
   try {
     await requireAuth();

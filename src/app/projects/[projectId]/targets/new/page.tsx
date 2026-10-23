@@ -1,164 +1,162 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, type FormEvent } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { api } from '@/lib/api-client';
+import { api, ApiError, errorMessage } from '@/lib/api-client';
+import { useResource } from '@/lib/use-resource';
+import { PageHeader } from '@/components/PageHeader';
+import { Field, firstErrors } from '@/components/Field';
+
+function validate(name: string, startUrl: string, authorized: boolean): Record<string, string> {
+  const errors: Record<string, string> = {};
+  if (name.trim().length < 2) errors.name = 'Informe um nome com pelo menos 2 caracteres.';
+  if (!/^https?:\/\/\S+$/i.test(startUrl.trim())) errors.startUrl = 'Informe uma URL completa iniciando com https:// ou http://.';
+  if (!authorized) errors.authorizationConfirmed = 'Confirme a autorização formal para continuar.';
+  return errors;
+}
 
 export default function NewTargetPage() {
-  const params = useParams();
+  const { projectId } = useParams<{ projectId: string }>();
   const router = useRouter();
-  const projectId = params.projectId as string;
+  const { data: project } = useResource(() => api.getProject(projectId), [projectId]);
 
   const [name, setName] = useState('');
   const [startUrl, setStartUrl] = useState('');
   const [description, setDescription] = useState('');
-  const [authorizationConfirmed, setAuthorizationConfirmed] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [authorized, setAuthorized] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: FormEvent) {
     e.preventDefault();
-    setLoading(true);
-    setError(null);
-
-    if (!authorizationConfirmed) {
-      setError('É obrigatório confirmar a autorização formal antes de cadastrar o alvo.');
-      setLoading(false);
+    const localErrors = validate(name, startUrl, authorized);
+    setFieldErrors(localErrors);
+    if (Object.keys(localErrors).length > 0) {
+      setError('Corrija os campos destacados.');
       return;
     }
 
+    setSaving(true);
+    setError(null);
     try {
       const res = await api.createTarget(projectId, {
-        name,
-        startUrl,
-        description: description.trim() ? description : undefined,
+        name: name.trim(),
+        startUrl: startUrl.trim(),
+        description: description.trim() || undefined,
         authorizationConfirmed: true,
       });
-
-      if (res.data?.id) {
-        router.push(`/targets/${res.data.id}`);
-      } else {
-        router.push(`/projects/${projectId}`);
+      router.push(`/targets/${res.data.id}`);
+    } catch (err) {
+      const message = errorMessage(err, 'Falha ao cadastrar alvo.');
+      setError(message);
+      if (err instanceof ApiError) {
+        // Bloqueios anti-SSRF chegam sem campo: o problema é sempre a URL.
+        setFieldErrors(err.code === 'SSRF_BLOCKED' ? { startUrl: message } : firstErrors(err.fields));
       }
-    } catch (err: any) {
-      setError(err.message || 'Falha ao cadastrar alvo.');
-    } finally {
-      setLoading(false);
+      setSaving(false);
     }
   }
 
+  const projectName = project?.name ?? 'Projeto';
+
   return (
-    <div style={{ maxWidth: '640px', margin: '2rem auto' }}>
-      <div style={{ marginBottom: '1.5rem' }}>
-        <Link href={`/projects/${projectId}`} style={{ fontSize: '0.875rem', color: 'var(--primary)', textDecoration: 'none' }}>
-          ← Voltar para Detalhes do Projeto
-        </Link>
-      </div>
+    <div className="narrow">
+      <PageHeader
+        title="Cadastrar alvo web"
+        breadcrumbs={[
+          { label: 'Projetos', href: '/projects' },
+          { label: projectName, href: `/projects/${projectId}` },
+          { label: 'Novo alvo' },
+        ]}
+        description="Informe o site que será auditado e confirme a autorização. A auditoria percorre apenas páginas do mesmo host."
+      />
 
-      <div className="card">
-        <h1 style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>Cadastrar Alvo de Auditoria</h1>
-        <p className="lead-text">
-          Configure a URL de partida e confirme a autorização prévia de auditoria técnica.
-        </p>
-
-        {/* Security / SSRF Warning Banner */}
-        <div className="alert alert-warning" role="region" aria-label="Aviso de segurança e limites de auditoria">
-          <strong>Proteção Anti-SSRF e Regras de Segurança:</strong>
-          <p style={{ marginTop: '0.25rem', fontSize: '0.8125rem' }}>
-            Apenas protocolos <code>http://</code> e <code>https://</code> são permitidos. Endereços locais (localhost, 127.0.0.1), redes privadas (10.0.0.0/8, 192.168.0.0/16, etc.) e endpoints de metadados de nuvem são estritamente bloqueados pelo servidor.
-          </p>
-        </div>
-
+      <form onSubmit={handleSubmit} noValidate>
         {error && (
           <div className="alert alert-error" role="alert">
             {error}
           </div>
         )}
 
-        <form onSubmit={handleSubmit} noValidate>
-          <div className="form-group">
-            <label htmlFor="target-name" className="form-label">
-              Nome do Alvo <span aria-hidden="true" style={{ color: '#ef4444' }}>*</span>
-            </label>
-            <p className="form-hint" id="target-name-hint">
-              Nome de referência para identificar este site ou aplicação.
-            </p>
-            <input
-              id="target-name"
-              type="text"
-              className="form-input"
-              required
-              aria-describedby="target-name-hint"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="ex: Portal Principal — Versão Web"
-            />
-          </div>
+        <Field id="name" label="Nome do alvo" required hint="Ex.: Portal principal — versão web." error={fieldErrors.name}>
+          {(props) => (
+            <input {...props} type="text" className="form-input" maxLength={200} value={name} onChange={(e) => setName(e.target.value)} />
+          )}
+        </Field>
 
-          <div className="form-group">
-            <label htmlFor="start-url" className="form-label">
-              URL Inicial de Auditoria <span aria-hidden="true" style={{ color: '#ef4444' }}>*</span>
-            </label>
-            <p className="form-hint" id="start-url-hint">
-              URL pública completa acessível pela internet, iniciando com https:// ou http://
-            </p>
+        <Field
+          id="startUrl"
+          label="URL inicial"
+          required
+          hint="Endereço público iniciando com https:// ou http://. Ex.: https://exemplo.gov.br"
+          error={fieldErrors.startUrl}
+        >
+          {(props) => (
             <input
-              id="start-url"
+              {...props}
               type="url"
+              inputMode="url"
+              autoComplete="url"
               className="form-input"
-              required
-              aria-describedby="start-url-hint"
               value={startUrl}
               onChange={(e) => setStartUrl(e.target.value)}
-              placeholder="https://exemplo.gov.br"
             />
-          </div>
+          )}
+        </Field>
 
-          <div className="form-group">
-            <label htmlFor="target-desc" className="form-label">
-              Notas do Alvo (Opcional)
-            </label>
+        <Field id="description" label="Notas" hint="Ambiente, particularidades ou páginas prioritárias." error={fieldErrors.description}>
+          {(props) => (
             <textarea
-              id="target-desc"
+              {...props}
               className="form-textarea"
               rows={3}
+              maxLength={2000}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="Informações adicionais, ambiente de homologação ou particularidades..."
             />
-          </div>
+          )}
+        </Field>
 
-          <div className="form-group" style={{ marginTop: '1.5rem', background: 'var(--bg-surface-elevated)', padding: '1rem', borderRadius: 'var(--radius-sm)' }}>
-            <label className="form-checkbox-label">
-              <input
-                type="checkbox"
-                className="form-checkbox"
-                required
-                checked={authorizationConfirmed}
-                onChange={(e) => setAuthorizationConfirmed(e.target.checked)}
-              />
-              <span>
-                <strong>Confirmação de Autorização Formal (Obrigatória):</strong><br />
-                Declaro expressamente que a equipe de auditoria possui autorização formal dos proprietários ou responsáveis legais pelo alvo para executar varreduras automatizadas e testes de acessibilidade neste endereço.
-              </span>
-            </label>
-          </div>
+        <div className="alert alert-info">
+          <p>
+            <strong>Limites de segurança:</strong> endereços locais (localhost, 127.0.0.1), redes privadas e endpoints de
+            metadados de nuvem são bloqueados pelo servidor, inclusive após redirecionamentos.
+          </p>
+        </div>
 
-          <div style={{ display: 'flex', gap: '1rem', marginTop: '1.5rem' }}>
-            <button
-              type="submit"
-              className="btn btn-primary"
-              disabled={loading || !authorizationConfirmed || !startUrl.trim() || !name.trim()}
-            >
-              {loading ? 'Validando e cadastrando...' : 'Cadastrar Alvo Autorizado'}
-            </button>
-            <Link href={`/projects/${projectId}`} className="btn btn-secondary">
-              Cancelar
-            </Link>
-          </div>
-        </form>
-      </div>
+        <div className="form-group">
+          <label className="form-check">
+            <input
+              type="checkbox"
+              checked={authorized}
+              aria-invalid={fieldErrors.authorizationConfirmed ? true : undefined}
+              aria-describedby={fieldErrors.authorizationConfirmed ? 'authorization-error' : undefined}
+              onChange={(e) => setAuthorized(e.target.checked)}
+            />
+            <span>
+              <strong>Tenho autorização formal para auditar este endereço (obrigatório).</strong>
+              <br />
+              Os responsáveis pelo site autorizaram varreduras automatizadas e testes de acessibilidade.
+            </span>
+          </label>
+          {fieldErrors.authorizationConfirmed && (
+            <p className="form-error" id="authorization-error">
+              {fieldErrors.authorizationConfirmed}
+            </p>
+          )}
+        </div>
+
+        <div className="form-actions">
+          <button type="submit" className="btn btn-primary" disabled={saving}>
+            {saving ? 'Validando endereço…' : 'Cadastrar alvo'}
+          </button>
+          <Link href={`/projects/${projectId}`} className="btn btn-secondary">
+            Cancelar
+          </Link>
+        </div>
+      </form>
     </div>
   );
 }

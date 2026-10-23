@@ -28,12 +28,17 @@ function normalize(text: string): string {
     .toLowerCase();
 }
 
-function excerpt(text: string, pattern: RegExp): string | null {
-  const match = text.match(pattern);
+/**
+ * Localiza o padrão no texto normalizado, mas devolve o trecho original (com acentos e
+ * maiúsculas). Em texto NFC a normalização preserva o comprimento, então os índices coincidem.
+ */
+function excerpt(original: string, normalized: string, pattern: RegExp): string | null {
+  const match = normalized.match(pattern);
   if (!match || match.index === undefined) return null;
+  const source = original.length === normalized.length ? original : normalized;
   const start = Math.max(0, match.index - 40);
-  const end = Math.min(text.length, match.index + match[0].length + 40);
-  return text.slice(start, end).trim();
+  const end = Math.min(source.length, match.index + match[0].length + 40);
+  return source.slice(start, end).trim();
 }
 
 const PATTERN_RULES: PatternRule[] = [
@@ -169,7 +174,7 @@ export function evaluateAiResponse(input: {
   responseText: string;
 }): RubricFinding[] {
   const scenario: AiScenario | undefined = getAiScenario(input.scenarioId);
-  const response = input.responseText.trim();
+  const response = input.responseText.trim().normalize('NFC');
   const normalized = normalize(response);
   const findings: RubricFinding[] = [];
 
@@ -183,7 +188,7 @@ export function evaluateAiResponse(input: {
       title: rule.title,
       description: rule.description,
       impact: rule.impact,
-      evidence: excerpt(normalized, matched),
+      evidence: excerpt(response, normalized, matched),
       helpText: rule.helpText,
     });
   }

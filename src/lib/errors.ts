@@ -1,3 +1,5 @@
+import { ZodError } from 'zod';
+
 /**
  * Application error codes used across the system.
  * Maps to HTTP status codes in API responses.
@@ -60,6 +62,13 @@ export class AppError extends Error {
 export function handleApiError(error: unknown): Response {
   if (error instanceof AppError) {
     return Response.json(error.toJSON(), { status: error.statusCode });
+  }
+
+  if (error instanceof ZodError) {
+    const validation = new AppError('VALIDATION_ERROR', 'Verifique os campos informados.', {
+      fields: error.flatten().fieldErrors,
+    });
+    return Response.json(validation.toJSON(), { status: validation.statusCode });
   }
 
   console.error('[API Error]', error);

@@ -16,9 +16,10 @@ export async function GET(request: Request) {
     const session = await requireAuth();
     const { searchParams } = new URL(request.url);
 
+    // Parâmetro ausente vem como null; z.coerce o transformaria em 0 e reprovaria.
     const pagination = paginationSchema.parse({
-      page: searchParams.get('page'),
-      limit: searchParams.get('limit'),
+      page: searchParams.get('page') ?? undefined,
+      limit: searchParams.get('limit') ?? undefined,
     });
 
     const search = searchParams.get('search') ?? '';
@@ -29,15 +30,8 @@ export async function GET(request: Request) {
       ...(status === 'active' || status === 'archived' ? { status: status as ProjectStatus } : {}),
       ...(search
         ? {
-            OR: [
-              { name: { contains: search, mode: 'insensitive' as const } },
-              {
-                description: {
-                  contains: search,
-                  mode: 'insensitive' as const,
-                },
-              },
-            ],
+            // SQLite: LIKE já é case-insensitive para ASCII; `mode` não é suportado.
+            OR: [{ name: { contains: search } }, { description: { contains: search } }],
           }
         : {}),
     };
