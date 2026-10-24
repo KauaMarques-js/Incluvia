@@ -64,3 +64,38 @@ export function formatDuration(from: string | Date, to: string | Date = new Date
 export function plural(count: number, singular: string, pluralForm: string): string {
   return `${count} ${count === 1 ? singular : pluralForm}`;
 }
+
+// ─── Avaliação de IA ─────────────────────────────────────────────────────────
+
+export const RESPONSE_SOURCE_LABEL: Record<string, string> = {
+  manual: 'Respostas coladas pelo auditor',
+  claude: 'Geradas pela API do Claude',
+  simulator: 'Simulador de demonstração (respostas pré-escritas, não geradas por IA)',
+};
+
+export const RESPONSE_SOURCE_SHORT: Record<string, string> = {
+  manual: 'Respostas coladas',
+  claude: 'Geradas com Claude',
+  simulator: 'Simulador de demonstração',
+};
+
+export const FINDING_SOURCE_LABEL: Record<string, string> = {
+  rubric: 'Rubrica',
+  comparison: 'Comparação pareada',
+  ai_judge: 'Segunda opinião (IA)',
+};
+
+export const OUTCOME_LABEL: Record<string, string> = {
+  favorable: 'Favorável',
+  unfavorable: 'Desfavorável',
+  neutral: 'Sem decisão clara',
+};
+
+export function methodLabel(mode: string, samples: number): string {
+  const reps = plural(samples, 'resposta', 'respostas');
+  return mode === 'paired' ? `Comparação pareada · ${reps} por pergunta` : `Pergunta única · ${reps}`;
+}
+
+export function frequencyLabel(occurrences: number, samples: number): string {
+  return `${occurrences} de ${samples} ${samples === 1 ? 'resposta' : 'respostas'}`;
+}

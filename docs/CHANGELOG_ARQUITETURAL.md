@@ -5,6 +5,61 @@ Foco: UX/UI, fluxo de navegação, acessibilidade e organização do front-end. 
 
 ---
 
+## 2026-10-23 (3) — Avaliação de IA: comparação pareada, repetições, Claude e evolução
+
+Objetivo: transformar a avaliação de IA de "procurar palavras numa resposta" em um método com evidência mais forte, seguindo o Módulo C do dossiê ("casos equivalentes que variam somente o aspecto sob avaliação"). A revisão humana continua sendo a decisão final.
+
+### 1. O que mudou para o usuário
+
+| Ideia | Implementação |
+| --- | --- |
+| Comparação pareada | Cada cenário tem uma **pergunta de referência** que muda só a menção à deficiência (no cenário interseccional, gênero e raça ficam nas duas). Em cenários de decisão, cada resposta recebe um desfecho (favorável, desfavorável ou sem decisão clara). Se a versão com deficiência recebe desfecho pior, surge o achado **Tratamento desigual na decisão**, mesmo sem nenhuma palavra ofensiva. |
+| Repetições | De 1 a 5 respostas por pergunta. Cada achado informa **"em X de N respostas"** e quantas vezes o mesmo padrão apareceu na referência. |
+| Execução automática | Origem das respostas: **coladas** (qualquer sistema), **geradas pelo Claude** (SDK oficial `@anthropic-ai/sdk`, modelo `claude-opus-5-5`, com `fallbacks: "default"`) ou **simulador de demonstração** (texto pré-escrito, sempre identificado como tal). Sem `ANTHROPIC_API_KEY`, as opções do Claude aparecem desabilitadas com a explicação. |
+| Auditoria contínua | **Repetir avaliação** refaz as mesmas perguntas (nova versão do modelo, nova data). A tela de resultado mostra a **Evolução** em relação à avaliação anterior do mesmo cenário. |
+| Rubrica mais inteligente | **Segunda opinião** opcional: o Claude lê cada resposta com as mesmas categorias (saída estruturada em JSON Schema). Os achados aparecem como "Segunda opinião (IA)", nunca como veredito. **Histórico da regra**: as revisões humanas (confirmado × falso positivo) medem a precisão de cada regra. |
+| Cenários com PCD | **Biblioteca** (`/ai-library`) com 8 cenários + livre, contexto, deficiência, interseccionalidade e status de validação. Todos aparecem como "validação com consultores PCD pendente": nenhuma validação foi inventada. |
+| Como corrigir | Cada achado traz **exemplo de reescrita**; a avaliação reúne **instruções sugeridas para o prompt de sistema** do produto avaliado, a partir dos achados não descartados. |
+
+### 2. Arquitetura
+
+- `src/lib/ai-scenarios.ts`: biblioteca de cenários (pergunta, referência, decisão, deficiências, interseccionalidade, validação).
+- `src/lib/ai-bias-rubric.ts`: motor puro: regras explicáveis, frequência, classificação de desfecho, comparação pareada, orientação de correção.
+- `src/lib/ai-simulator.ts`: respostas pré-escritas por cenário (as primeiras mais enviesadas, para simular "versões").
+- `src/lib/claude.ts`: único ponto de acesso à API do Claude (credencial só no servidor; tratamento de `refusal`).
+- `src/lib/ai-judge.ts`: segunda opinião e agregação por categoria.
+- `src/lib/ai-evaluation-service.ts`: orquestra respostas → rubrica → segunda opinião; sem acesso a banco, usado pela rota e pelo seed.
+- `src/lib/ai-rule-stats.ts`: histórico de revisões por regra.
+- Dados: `AiEvaluation` ganhou `mode`, `source`, `referencePrompt` e `judgeStatus`; nova tabela `AiResponse` (variante, posição, texto, desfecho); `AiFinding` ganhou `source`, `occurrences`, `samples` e `referenceOccurrences`. O campo `responseText` foi removido (as respostas agora são linhas de `AiResponse`).
+- API: `POST /projects/:id/ai-evaluations` (novo contrato, validação Zod com regras cruzadas); `GET /ai-evaluations/:id` (com orientação, histórico, instruções e avaliação anterior); `GET /ai-catalog` substitui `GET /ai-scenarios`.
+- Interface: novo formulário em 4 passos (Cenário, Perguntas, Respostas, Confirmação), resultado com comparação de desfechos, evolução, achados, correção e respostas lado a lado, mais a página Biblioteca.
+- Relatório Markdown: método, origem, comparação, frequência, origem do achado, exemplo, instruções e respostas analisadas.
+- Seed: duas avaliações do simulador no mesmo cenário (uma semana de distância, "versões" 2026-09 e 2026-10; a antiga já revisada), mostrando evolução de 4 para 1 achado. A versão nova ainda tem 1 de 3 respostas desfavoráveis sem nenhuma palavra suspeita: só a comparação pareada a encontra.
+- Correção: o login e o logout usam navegação completa. No `next start`, o cache do roteador reaproveitava o redirecionamento para `/login` feito antes de entrar, e o login não saía da tela (encontrado ao gravar o vídeo de pitch).
+
+### 3. Validações executadas
+
+| Validação | Resultado |
+| --- | --- |
+| `npx tsc --noEmit` | sem erros |
+| `npm run lint` | sem avisos |
+| `npm test` | **42/42** (17 da avaliação de IA: frequência, referência, desfecho, tratamento desigual, simulador, segunda opinião, validação, relatório) |
+| `npm run build` | concluído |
+| axe-core (WCAG 2.2 A/AA) em 12 telas, incluindo formulário, duas avaliações e biblioteca, mais o diálogo de revisão | **0 violações** |
+| Fluxo no navegador (produção) | resultado do seed (comparação, evolução 4 → 1, histórico da regra, instruções); "Repetir avaliação" com o simulador |
+| API | colar respostas pareadas → segregação, estereótipo e tratamento desigual (1 de 2, referência 0); referência ausente → 422 com erro no campo; Claude sem chave → 409 com explicação |
+| 375 px | formulário, resultado e biblioteca sem rolagem horizontal |
+
+**Não testado:** a geração e a segunda opinião com o Claude de verdade (não há `ANTHROPIC_API_KEY` neste ambiente). O código segue a documentação oficial do SDK e compila contra os tipos do pacote instalado.
+
+### 4. Limitações
+
+- A classificação de desfecho usa expressões em português ("é apto", "não recomendo", "negado"). Respostas ambíguas viram "sem decisão clara" e não entram na comparação.
+- O simulador produz sempre as mesmas respostas para o mesmo deslocamento; ele serve para demonstração, não para medir viés.
+- O vídeo de pitch (`pitch/`) mostra o formulário antigo de IA e precisa ser regravado.
+
+---
+
 ## 2026-10-23 (2) — Refinamento visual sóbrio e integração do VLibras
 
 Objetivo: eliminar a aparência genérica (gradientes, brilhos, cartões arredondados para tudo, animações) e dar à Incluvia a cara de uma ferramenta profissional de auditoria, mantendo o tema escuro, o nome e o propósito. Nenhuma dependência npm foi adicionada.

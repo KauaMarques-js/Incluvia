@@ -1,7 +1,7 @@
 'use client';
 
 import { Suspense, useEffect, useState, type FormEvent } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { api, errorMessage } from '@/lib/api-client';
 import { PageHeader } from '@/components/PageHeader';
 import type { User } from '@/lib/types';
@@ -18,7 +18,6 @@ function safeNext(value: string | null): string {
 }
 
 function LoginForm() {
-  const router = useRouter();
   const next = safeNext(useSearchParams().get('next'));
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -40,8 +39,9 @@ function LoginForm() {
     setError(null);
     try {
       await api.login({ email, password });
-      router.push(next);
-      router.refresh();
+      // Navegação completa: descarta o cache do roteador, que guardou os redirecionamentos
+      // para /login feitos (inclusive por prefetch) enquanto não havia sessão.
+      window.location.assign(next);
     } catch (err) {
       setError(errorMessage(err, 'Falha na autenticação. Verifique os dados.'));
       setLoading(false);
@@ -50,8 +50,7 @@ function LoginForm() {
 
   async function handleLogout() {
     await api.logout().catch(() => undefined);
-    setCurrentUser(null);
-    router.refresh();
+    window.location.assign('/login');
   }
 
   return (
@@ -68,7 +67,7 @@ function LoginForm() {
             Você já está conectado como <strong>{currentUser.name}</strong> ({currentUser.email}).
           </div>
           <div className="form-actions">
-            <button type="button" className="btn btn-primary" onClick={() => router.push(next)}>
+            <button type="button" className="btn btn-primary" onClick={() => window.location.assign(next)}>
               Continuar
             </button>
             <button type="button" className="btn btn-secondary" onClick={handleLogout}>

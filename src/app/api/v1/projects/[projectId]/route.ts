@@ -29,9 +29,13 @@ async function getAuthorizedProject(projectId: string, userId: string) {
         select: {
           id: true,
           scenarioTitle: true,
+          mode: true,
+          source: true,
           modelName: true,
+          modelVersion: true,
           createdAt: true,
-          _count: { select: { findings: true } },
+          // O aviso "nenhum padrão encontrado" não conta como achado.
+          _count: { select: { findings: { where: { ruleId: { not: 'ableism-needs-human-review' } } } } },
         },
         orderBy: { createdAt: 'desc' },
       },

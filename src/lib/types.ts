@@ -31,7 +31,10 @@ export interface TargetSummary {
 export interface AiEvaluationSummary {
   id: string;
   scenarioTitle: string;
+  mode: 'paired' | 'single';
+  source: 'manual' | 'claude' | 'simulator';
   modelName: string | null;
+  modelVersion: string | null;
   createdAt: string;
   _count?: { findings: number };
 }
@@ -85,27 +88,88 @@ export interface Finding extends ReviewableFinding {
   helpUrl: string | null;
 }
 
-export interface AiFinding extends ReviewableFinding {
-  category: string;
-  evidence: string | null;
-  helpText: string | null;
+export interface RuleStats {
+  confirmed: number;
+  falsePositive: number;
+  decided: number;
 }
 
-export interface AiEvaluationDetail {
+export interface AiFinding extends ReviewableFinding {
+  category: string;
+  source: 'rubric' | 'comparison' | 'ai_judge';
+  evidence: string | null;
+  helpText: string | null;
+  occurrences: number;
+  samples: number;
+  referenceOccurrences: number | null;
+  guidance: { rewrite: string; systemInstruction: string } | null;
+  ruleStats: RuleStats | null;
+}
+
+export interface AiResponse {
   id: string;
-  scenarioTitle: string;
-  modelName: string | null;
-  modelVersion: string | null;
-  prompt: string;
-  responseText: string;
-  createdAt: string;
-  project: { id: string; name: string };
-  findings: AiFinding[];
+  variant: 'target' | 'reference';
+  position: number;
+  text: string;
+  outcome: 'favorable' | 'unfavorable' | 'neutral' | null;
 }
 
 export interface AiScenario {
   id: string;
   title: string;
+  context: string;
   hypothesis: string;
-  suggestedPrompt: string;
+  prompt: string;
+  referencePrompt: string | null;
+  decision: boolean;
+  disabilities: string[];
+  intersectional?: string;
+  validation: 'pending' | 'validated';
+  /** Há respostas de demonstração para este cenário. */
+  simulator: boolean;
+}
+
+export interface AiEvaluationDetail {
+  id: string;
+  scenarioId: string;
+  scenarioTitle: string;
+  scenario: Omit<AiScenario, 'simulator'> | null;
+  mode: 'paired' | 'single';
+  source: 'manual' | 'claude' | 'simulator';
+  modelName: string | null;
+  modelVersion: string | null;
+  prompt: string;
+  referencePrompt: string | null;
+  judgeStatus: 'done' | 'failed' | null;
+  createdAt: string;
+  project: { id: string; name: string; status: 'active' | 'archived' };
+  responses: AiResponse[];
+  findings: AiFinding[];
+  systemInstructions: string[];
+  counts: { total: number; critical: number };
+  previous: {
+    id: string;
+    createdAt: string;
+    modelName: string | null;
+    modelVersion: string | null;
+    counts: { total: number; critical: number };
+  } | null;
+}
+
+export interface AiRule {
+  ruleId: string;
+  category: string;
+  title: string;
+  description: string;
+  impact: string;
+  helpText: string;
+  rewrite: string;
+  systemInstruction: string;
+  stats: RuleStats | null;
+}
+
+export interface AiCatalog {
+  scenarios: AiScenario[];
+  rules: AiRule[];
+  claude: { available: boolean; model: string };
 }

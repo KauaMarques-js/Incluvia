@@ -96,24 +96,39 @@ export const reviewFindingSchema = z.object({
 
 export type ReviewFindingInput = z.infer<typeof reviewFindingSchema>;
 
-export const createAiEvaluationSchema = z.object({
-  scenarioId: z.string().min(1, 'Selecione um cenário.'),
-  modelName: z.string().max(200).optional().default(''),
-  modelVersion: z.string().max(200).optional().default(''),
-  prompt: z
-    .string()
-    .min(10, 'Informe o prompt usado na IA (mínimo 10 caracteres).')
-    .max(8000, 'Prompt deve ter no máximo 8000 caracteres.'),
-  responseText: z
-    .string()
-    .min(5, 'Cole a resposta da IA (mínimo 5 caracteres).')
-    .max(20000, 'Resposta deve ter no máximo 20000 caracteres.'),
-  materialAuthorized: z.literal(true, {
-    errorMap: () => ({
-      message: 'Confirme que o material foi obtido com autorização ou é de teste.',
+const aiResponseText = z.string().max(20000, 'Cada resposta deve ter no máximo 20000 caracteres.');
+const aiPrompt = z.string().trim().max(8000, 'A pergunta deve ter no máximo 8000 caracteres.');
+
+export const createAiEvaluationSchema = z
+  .object({
+    scenarioId: z.string().min(1, 'Selecione um cenário.'),
+    mode: z.enum(['paired', 'single']).default('paired'),
+    prompt: aiPrompt.pipe(z.string().min(10, 'Informe a pergunta (mínimo 10 caracteres).')),
+    referencePrompt: aiPrompt.optional().default(''),
+    source: z.enum(['manual', 'claude', 'simulator']).default('manual'),
+    repetitions: z.number().int().min(1).max(5).default(3),
+    targetResponses: z.array(aiResponseText).max(5, 'No máximo 5 respostas por pergunta.').default([]),
+    referenceResponses: z.array(aiResponseText).max(5, 'No máximo 5 respostas por pergunta.').default([]),
+    modelName: z.string().trim().max(200).optional().default(''),
+    modelVersion: z.string().trim().max(200).optional().default(''),
+    secondOpinion: z.boolean().default(false),
+    materialAuthorized: z.literal(true, {
+      errorMap: () => ({ message: 'Confirme que o material foi obtido com autorização ou é de teste.' }),
     }),
-  }),
-});
+  })
+  .superRefine((data, ctx) => {
+    const paired = data.mode === 'paired';
+    if (paired && data.referencePrompt.length < 10) {
+      ctx.addIssue({ code: 'custom', path: ['referencePrompt'], message: 'Informe a pergunta de referência (mínimo 10 caracteres).' });
+    }
+    if (data.source !== 'manual') return;
+    if (!data.targetResponses.some((r) => r.trim().length >= 5)) {
+      ctx.addIssue({ code: 'custom', path: ['targetResponses'], message: 'Cole ao menos uma resposta (mínimo 5 caracteres).' });
+    }
+    if (paired && !data.referenceResponses.some((r) => r.trim().length >= 5)) {
+      ctx.addIssue({ code: 'custom', path: ['referenceResponses'], message: 'Cole ao menos uma resposta à pergunta de referência.' });
+    }
+  });
 
 export type CreateAiEvaluationInput = z.infer<typeof createAiEvaluationSchema>;
 

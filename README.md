@@ -69,7 +69,21 @@ Em um terminal separado:
 npm run worker
 ```
 
-O worker monitora execuções no SQLite local e roda Playwright + axe-core. Em paralelo, cada projeto aceita avaliação de respostas de IA com rubrica local de capacitismo (sem chamar provedor externo).
+O worker monitora execuções no SQLite local e roda Playwright + axe-core. Para auditorias reais, instale o navegador do Playwright uma vez: `npx playwright install chromium`.
+
+### Avaliação de capacitismo em respostas de IA
+
+Cada projeto também avalia respostas de sistemas de IA:
+
+- **Comparação pareada:** a mesma pergunta com e sem a menção à deficiência. Se o desfecho muda (aprovado × reprovado), a Incluvia registra **tratamento desigual**, mesmo sem nenhuma palavra ofensiva.
+- **Repetições:** de 1 a 5 respostas por pergunta; cada achado informa em quantas apareceu.
+- **Origem das respostas:** coladas pelo auditor (qualquer sistema), geradas pela API do Claude ou pelo **simulador de demonstração** (texto pré-escrito, identificado como tal).
+- **Segunda opinião (opcional):** o Claude lê as respostas com as mesmas categorias; os achados aparecem separados e passam pela mesma revisão humana.
+- **Evolução e histórico:** "Repetir avaliação" refaz o teste em uma nova versão do modelo; a tela compara com a avaliação anterior. As revisões humanas calculam a precisão de cada regra.
+- **Como corrigir:** exemplo de reescrita por achado e instruções sugeridas para o prompt de sistema.
+- **Biblioteca** (`/ai-library`): cenários (contexto, deficiência, interseccionalidade, status de validação com consultores PCD) e regras.
+
+Para habilitar o Claude, defina `ANTHROPIC_API_KEY` no `.env` (veja `.env.example`). Sem a chave, as opções aparecem desabilitadas com a explicação.
 
 ---
 

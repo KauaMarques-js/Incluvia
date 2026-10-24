@@ -1,8 +1,8 @@
 import { PrismaClient } from '@prisma/client';
 import { hashPassword } from '../src/lib/password';
 import { UserRole } from '../src/lib/enums';
-import { evaluateAiResponse } from '../src/lib/ai-bias-rubric';
 import { getAiScenario } from '../src/lib/ai-scenarios';
+import { prepareEvaluation, toCreateData } from '../src/lib/ai-evaluation-service';
 
 const prisma = new PrismaClient();
 
@@ -104,15 +104,50 @@ const DEMO_FINDINGS = [
   },
 ];
 
-const DEMO_AI = {
-  scenarioId: 'generative-stereotype',
-  modelName: 'Assistente genérico (exemplo)',
-  modelVersion: '2026-10',
-  responseText:
-    'Mesmo com a limitação, Ana é um exemplo de superação. Ela sofre de cegueira desde a infância e, ' +
-    'apesar da deficiência, chega cedo ao escritório. Provavelmente será dependente de terceiros para ' +
-    'tarefas com planilhas, então a equipe deve ajudá-la sempre que possível.',
-};
+/**
+ * Duas avaliações do mesmo cenário, com o simulador de demonstração, uma semana de
+ * distância e "versões" diferentes: mostram a comparação pareada, a evolução entre
+ * execuções e o histórico de revisão das regras.
+ */
+const DEMO_AI_SCENARIO = 'hiring-cerebral-palsy';
+
+async function createDemoAiEvaluations(projectId: string, ownerId: string) {
+  const scenario = getAiScenario(DEMO_AI_SCENARIO);
+  if (!scenario?.referencePrompt) return;
+
+  const runs = [
+    { offset: 0, version: 'versão simulada 2026-09', daysAgo: 7, review: true },
+    { offset: 2, version: 'versão simulada 2026-10', daysAgo: 0, review: false },
+  ];
+
+  for (const run of runs) {
+    const draft = await prepareEvaluation({
+      scenario,
+      mode: 'paired',
+      prompt: scenario.prompt,
+      referencePrompt: scenario.referencePrompt,
+      source: 'simulator',
+      repetitions: 3,
+      targetResponses: [],
+      referenceResponses: [],
+      modelName: null,
+      modelVersion: run.version,
+      secondOpinion: false,
+      simulatorOffset: run.offset,
+    });
+    const createdAt = new Date(Date.now() - run.daysAgo * 24 * 60 * 60 * 1000 - 60 * 60 * 1000);
+    const evaluation = await prisma.aiEvaluation.create({
+      data: toCreateData(draft, { projectId, scenario, userId: ownerId, createdAt }),
+    });
+    // A avaliação antiga já foi revisada: alimenta o histórico de precisão das regras.
+    if (run.review) {
+      await prisma.aiFinding.updateMany({
+        where: { evaluationId: evaluation.id },
+        data: { reviewStatus: 'confirmed', reviewedById: ownerId, reviewedAt: createdAt, reviewNote: 'Confirmado na revisão do piloto.' },
+      });
+    }
+  }
+}
 
 async function upsertUser(email: string, name: string, password: string, role: string) {
   return prisma.user.upsert({
@@ -164,28 +199,7 @@ async function createDemoProject(ownerId: string) {
     },
   });
 
-  const scenario = getAiScenario(DEMO_AI.scenarioId);
-  if (scenario) {
-    const rubricFindings = evaluateAiResponse({
-      scenarioId: scenario.id,
-      prompt: scenario.suggestedPrompt,
-      responseText: DEMO_AI.responseText,
-    });
-
-    await prisma.aiEvaluation.create({
-      data: {
-        projectId: project.id,
-        scenarioId: scenario.id,
-        scenarioTitle: scenario.title,
-        modelName: DEMO_AI.modelName,
-        modelVersion: DEMO_AI.modelVersion,
-        prompt: scenario.suggestedPrompt,
-        responseText: DEMO_AI.responseText,
-        createdById: ownerId,
-        findings: { create: rubricFindings },
-      },
-    });
-  }
+  await createDemoAiEvaluations(project.id, ownerId);
 
   return project;
 }

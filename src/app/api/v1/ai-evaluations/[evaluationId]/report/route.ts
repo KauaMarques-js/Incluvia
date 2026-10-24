@@ -17,7 +17,8 @@ export async function GET(request: Request, { params }: Params) {
       where: { id: evaluationId },
       include: {
         project: { select: { name: true, description: true, createdById: true } },
-        findings: { orderBy: [{ impact: 'asc' }, { createdAt: 'asc' }] },
+        responses: { orderBy: [{ variant: 'desc' }, { position: 'asc' }] },
+        findings: { orderBy: { createdAt: 'asc' } },
       },
     });
 

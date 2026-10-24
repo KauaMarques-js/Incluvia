@@ -118,48 +118,79 @@ model Finding {
 
 // ─── AI Evaluation (capacitismo em respostas de IA) ──────────────────────────
 
+/// Uma avaliação aplica a rubrica a respostas de um sistema de IA.
+/// mode: `paired` compara a pergunta com a característica avaliada a uma pergunta de
+/// referência que só difere nela; `single` avalia só a primeira.
+/// source: `manual` (respostas coladas), `claude` (geradas pela API) ou `simulator`
+/// (respostas pré-escritas de demonstração).
 model AiEvaluation {
-  id            String   @id @default(uuid())
-  projectId     String   @map("project_id")
-  project       Project  @relation(fields: [projectId], references: [id])
-  scenarioId    String   @map("scenario_id")
-  scenarioTitle String   @map("scenario_title")
-  modelName     String?  @map("model_name")
-  modelVersion  String?  @map("model_version")
-  prompt        String
-  responseText  String   @map("response_text")
-  createdById   String   @map("created_by_id")
-  createdBy     User     @relation(fields: [createdById], references: [id])
-  createdAt     DateTime @default(now()) @map("created_at")
+  id              String   @id @default(uuid())
+  projectId       String   @map("project_id")
+  project         Project  @relation(fields: [projectId], references: [id])
+  scenarioId      String   @map("scenario_id")
+  scenarioTitle   String   @map("scenario_title")
+  mode            String   @default("paired")
+  source          String   @default("manual")
+  modelName       String?  @map("model_name")
+  modelVersion    String?  @map("model_version")
+  prompt          String
+  referencePrompt String?  @map("reference_prompt")
+  /// Segunda opinião por IA: null (não pedida), done, failed.
+  judgeStatus     String?  @map("judge_status")
+  createdById     String   @map("created_by_id")
+  createdBy       User     @relation(fields: [createdById], references: [id])
+  createdAt       DateTime @default(now()) @map("created_at")
 
-  findings AiFinding[]
+  responses AiResponse[]
+  findings  AiFinding[]
 
-  @@index([projectId])
+  @@index([projectId, scenarioId])
   @@index([createdById])
   @@map("ai_evaluations")
 }
 
-model AiFinding {
-  id           String    @id @default(uuid())
-  evaluationId String    @map("evaluation_id")
+/// Uma resposta avaliada. variant: `target` (pergunta com a característica) ou `reference`.
+/// outcome: desfecho em cenários de decisão (favorable, unfavorable, neutral).
+model AiResponse {
+  id           String       @id @default(uuid())
+  evaluationId String       @map("evaluation_id")
   evaluation   AiEvaluation @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
-  ruleId       String    @map("rule_id")
-  category     String
-  title        String
-  description  String
-  impact       String    @default("unknown")
-  evidence     String?
-  helpText     String?   @map("help_text")
-  reviewStatus String    @default("unreviewed") @map("review_status")
-  reviewNote   String?   @map("review_note")
-  reviewedById String?   @map("reviewed_by_id")
-  reviewedBy   User?     @relation("AiReviewedBy", fields: [reviewedById], references: [id])
-  reviewedAt   DateTime? @map("reviewed_at")
-  createdAt    DateTime  @default(now()) @map("created_at")
+  variant      String
+  position     Int
+  text         String
+  outcome      String?
 
   @@index([evaluationId])
-  @@index([category])
+  @@map("ai_responses")
+}
+
+model AiFinding {
+  id                   String       @id @default(uuid())
+  evaluationId         String       @map("evaluation_id")
+  evaluation           AiEvaluation @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
+  ruleId               String       @map("rule_id")
+  category             String
+  /// rubric (regras locais), comparison (desfecho desigual) ou ai_judge (segunda opinião).
+  source               String       @default("rubric")
+  title                String
+  description          String
+  impact               String       @default("unknown")
+  evidence             String?
+  helpText             String?      @map("help_text")
+  /// Em quantas respostas da versão avaliada o padrão apareceu, de `samples`.
+  occurrences          Int          @default(1)
+  samples              Int          @default(1)
+  /// Mesma contagem na versão de referência (null em avaliação simples).
+  referenceOccurrences Int?         @map("reference_occurrences")
+  reviewStatus         String       @default("unreviewed") @map("review_status")
+  reviewNote           String?      @map("review_note")
+  reviewedById         String?      @map("reviewed_by_id")
+  reviewedBy           User?        @relation("AiReviewedBy", fields: [reviewedById], references: [id])
+  reviewedAt           DateTime?    @map("reviewed_at")
+  createdAt            DateTime     @default(now()) @map("created_at")
+
+  @@index([evaluationId])
+  @@index([ruleId, reviewStatus])
   @@index([impact])
-  @@index([reviewStatus])
   @@map("ai_findings")
 }

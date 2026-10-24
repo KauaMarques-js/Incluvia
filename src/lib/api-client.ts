@@ -3,8 +3,8 @@
  * Única porta de saída HTTP da interface (§13.2): trata sessão expirada e erros de validação.
  */
 import type {
+  AiCatalog,
   AiEvaluationDetail,
-  AiScenario,
   AuditDetail,
   Finding,
   ProjectDetail,
@@ -77,6 +77,21 @@ function patch<T>(path: string, body: unknown) {
   return request<T>(path, { method: 'PATCH', body: JSON.stringify(body) });
 }
 
+export interface CreateAiEvaluationInput {
+  scenarioId: string;
+  mode: 'paired' | 'single';
+  prompt: string;
+  referencePrompt?: string;
+  source: 'manual' | 'claude' | 'simulator';
+  repetitions: number;
+  targetResponses: string[];
+  referenceResponses: string[];
+  modelName?: string;
+  modelVersion?: string;
+  secondOpinion: boolean;
+  materialAuthorized: boolean;
+}
+
 export interface ReviewInput {
   reviewStatus: string;
   reviewNote?: string;
@@ -125,18 +140,9 @@ export const api = {
     patch<Finding>(`/api/v1/findings/${findingId}/review`, body),
 
   // AI evaluations
-  getAiScenarios: () => request<AiScenario[]>('/api/v1/ai-scenarios'),
-  createAiEvaluation: (
-    projectId: string,
-    body: {
-      scenarioId: string;
-      modelName?: string;
-      modelVersion?: string;
-      prompt: string;
-      responseText: string;
-      materialAuthorized: boolean;
-    }
-  ) => post<{ id: string }>(`/api/v1/projects/${projectId}/ai-evaluations`, body),
+  getAiCatalog: () => request<AiCatalog>('/api/v1/ai-catalog'),
+  createAiEvaluation: (projectId: string, body: CreateAiEvaluationInput) =>
+    post<{ id: string }>(`/api/v1/projects/${projectId}/ai-evaluations`, body),
   getAiEvaluation: (evaluationId: string) =>
     request<AiEvaluationDetail>(`/api/v1/ai-evaluations/${evaluationId}`),
   reviewAiFinding: (findingId: string, body: ReviewInput) =>

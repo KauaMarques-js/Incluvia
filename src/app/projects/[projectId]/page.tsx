@@ -5,7 +5,7 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { api, errorMessage } from '@/lib/api-client';
 import { useResource } from '@/lib/use-resource';
-import { formatDate, plural } from '@/lib/labels';
+import { RESPONSE_SOURCE_SHORT, formatDate, plural } from '@/lib/labels';
 import { PageHeader } from '@/components/PageHeader';
 import { ProjectStatusBadge } from '@/components/Badges';
 import { ConfirmDialog } from '@/components/Modal';
@@ -132,7 +132,10 @@ export default function ProjectDetailPage() {
         <div className="section-header">
           <div>
             <h2 id="ai-title">Avaliações de respostas de IA ({evaluations.length})</h2>
-            <p>Rubrica local que procura linguagem capacitista, presunção de incapacidade e omissão.</p>
+            <p>
+              Compara respostas com e sem a menção à deficiência e procura linguagem capacitista.{' '}
+              <Link href="/ai-library">Ver biblioteca de cenários e regras</Link>
+            </p>
           </div>
           {!isArchived && evaluations.length > 0 && (
             <Link href={`/projects/${project.id}/ai/new`} className="btn btn-secondary btn-sm">
@@ -144,7 +147,7 @@ export default function ProjectDetailPage() {
         {evaluations.length === 0 ? (
           <EmptyState
             title="Nenhuma resposta de IA avaliada"
-            description="Cole um prompt e a resposta de um modelo para aplicar a rubrica. Nada é enviado a provedores externos."
+            description="Faça a mesma pergunta com e sem a menção à deficiência e compare as respostas de um sistema de IA."
             action={
               !isArchived && (
                 <Link href={`/projects/${project.id}/ai/new`} className="btn btn-secondary">
@@ -160,7 +163,8 @@ export default function ProjectDetailPage() {
               <thead>
                 <tr>
                   <th scope="col">Cenário</th>
-                  <th scope="col">Modelo</th>
+                  <th scope="col">Método</th>
+                  <th scope="col">Sistema avaliado</th>
                   <th scope="col">Achados</th>
                   <th scope="col">Data</th>
                 </tr>
@@ -173,7 +177,11 @@ export default function ProjectDetailPage() {
                         {item.scenarioTitle}
                       </Link>
                     </td>
-                    <td>{item.modelName || 'Não informado'}</td>
+                    <td>
+                      {item.mode === 'paired' ? 'Pareada' : 'Pergunta única'}
+                      <p className="cell-note">{RESPONSE_SOURCE_SHORT[item.source] ?? item.source}</p>
+                    </td>
+                    <td>{[item.modelName || 'Não informado', item.modelVersion].filter(Boolean).join(' · ')}</td>
                     <td>{plural(item._count?.findings ?? 0, 'achado', 'achados')}</td>
                     <td className="nowrap">{formatDate(item.createdAt)}</td>
                   </tr>

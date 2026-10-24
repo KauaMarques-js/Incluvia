@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import { api } from '@/lib/api-client';
 import type { User } from '@/lib/types';
 
@@ -11,13 +11,12 @@ const NAV_ITEMS = [
   {
     href: '/projects',
     label: 'Projetos',
-    isActive: (path: string) => ['/projects', '/targets', '/audits', '/ai-evaluations'].some((p) => path.startsWith(p)),
+    isActive: (path: string) => ['/projects', '/targets', '/audits', '/ai-evaluations', '/ai-library'].some((p) => path.startsWith(p)),
   },
 ];
 
 export function AppHeader() {
   const pathname = usePathname();
-  const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const isLoginPage = pathname === '/login';
 
@@ -28,9 +27,8 @@ export function AppHeader() {
 
   async function handleLogout() {
     await api.logout().catch(() => undefined);
-    setUser(null);
-    router.push('/login');
-    router.refresh();
+    // Navegação completa para não reaproveitar páginas do cache do roteador após sair.
+    window.location.assign('/login');
   }
 
   return (

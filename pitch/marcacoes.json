@@ -1,0 +1,54 @@
+{
+  "duracao_s": 157.7,
+  "formato": "video/mp4;codecs=avc1.640028",
+  "cenas": [
+    {
+      "cena": "1. Login",
+      "inicio_s": 0
+    },
+    {
+      "cena": "2. Painel",
+      "inicio_s": 6.1
+    },
+    {
+      "cena": "3. Projeto",
+      "inicio_s": 15.8
+    },
+    {
+      "cena": "4. Cadastro de alvo (anti-SSRF)",
+      "inicio_s": 22.6
+    },
+    {
+      "cena": "5. Preparar auditoria",
+      "inicio_s": 42.5
+    },
+    {
+      "cena": "6. Resultados da auditoria",
+      "inicio_s": 51.2
+    },
+    {
+      "cena": "6b. Filtro e revisão humana",
+      "inicio_s": 61.3
+    },
+    {
+      "cena": "6c. Relatório",
+      "inicio_s": 77.4
+    },
+    {
+      "cena": "7. Avaliação de IA — preparar",
+      "inicio_s": 86.7
+    },
+    {
+      "cena": "7b. Avaliação de IA — resultado",
+      "inicio_s": 109.3
+    },
+    {
+      "cena": "8. VLibras",
+      "inicio_s": 133.6
+    },
+    {
+      "cena": "Fim",
+      "inicio_s": 156.2
+    }
+  ]
+}

@@ -4,7 +4,9 @@ import { requireAuth } from '@/lib/session';
 import { createAiEvaluationSchema } from '@/lib/schemas';
 import { AppError, handleApiError } from '@/lib/errors';
 import { getAiScenario } from '@/lib/ai-scenarios';
-import { evaluateAiResponse } from '@/lib/ai-bias-rubric';
+import { prepareEvaluation, toCreateData } from '@/lib/ai-evaluation-service';
+import { isClaudeConfigured } from '@/lib/claude';
+import { simulatorSupports } from '@/lib/ai-simulator';
 import { ProjectStatus } from '@/lib/enums';
 
 interface Params {
@@ -48,50 +50,35 @@ export async function POST(request: Request, { params }: Params) {
       throw new AppError('CONFLICT', 'Não é possível avaliar IA em projeto arquivado.');
     }
 
-    const body = await request.json();
-    const parsed = createAiEvaluationSchema.safeParse(body);
-    if (!parsed.success) {
-      throw new AppError('VALIDATION_ERROR', 'Verifique os campos informados.', {
-        fields: parsed.error.flatten().fieldErrors,
-      });
-    }
-
-    const scenario = getAiScenario(parsed.data.scenarioId);
+    const input = createAiEvaluationSchema.parse(await request.json());
+    const scenario = getAiScenario(input.scenarioId);
     if (!scenario) {
       throw new AppError('VALIDATION_ERROR', 'Cenário de teste inválido.');
     }
+    if ((input.source === 'claude' || input.secondOpinion) && !isClaudeConfigured()) {
+      throw new AppError('CONFLICT', 'A integração com o Claude não está configurada neste servidor (ANTHROPIC_API_KEY).');
+    }
+    if (input.source === 'simulator' && !simulatorSupports(scenario.id)) {
+      throw new AppError('VALIDATION_ERROR', 'O simulador de demonstração não tem respostas para este cenário.');
+    }
 
-    const rubricFindings = evaluateAiResponse({
-      scenarioId: scenario.id,
-      prompt: parsed.data.prompt,
-      responseText: parsed.data.responseText,
+    const draft = await prepareEvaluation({
+      scenario,
+      mode: input.mode,
+      prompt: input.prompt,
+      referencePrompt: input.mode === 'paired' ? input.referencePrompt : null,
+      source: input.source,
+      repetitions: input.repetitions,
+      targetResponses: input.targetResponses,
+      referenceResponses: input.referenceResponses,
+      modelName: input.modelName || null,
+      modelVersion: input.modelVersion || null,
+      secondOpinion: input.secondOpinion,
     });
 
     const evaluation = await prisma.aiEvaluation.create({
-      data: {
-        projectId,
-        scenarioId: scenario.id,
-        scenarioTitle: scenario.title,
-        modelName: parsed.data.modelName || null,
-        modelVersion: parsed.data.modelVersion || null,
-        prompt: parsed.data.prompt,
-        responseText: parsed.data.responseText,
-        createdById: session.userId,
-        findings: {
-          create: rubricFindings.map((finding) => ({
-            ruleId: finding.ruleId,
-            category: finding.category,
-            title: finding.title,
-            description: finding.description,
-            impact: finding.impact,
-            evidence: finding.evidence,
-            helpText: finding.helpText,
-          })),
-        },
-      },
-      include: {
-        findings: true,
-      },
+      data: toCreateData(draft, { projectId, scenario, userId: session.userId }),
+      select: { id: true },
     });
 
     return NextResponse.json({ data: evaluation }, { status: 201 });
